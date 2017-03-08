@@ -1,0 +1,215 @@
+<html>
+<head>
+    <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>-->
+    <script src="three.min.js"></script>
+    <script src="GLTFLoader.js"></script>
+    <script src="rhill-voronoi-core.min.js"></script>
+</head>
+<body>
+    <canvas id="c" width="500" height="500" style="float:left"></canvas>
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext('2d');
+
+const drawCircle = (x, y, r) => {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.closePath();
+    ctx.stroke();
+};
+
+
+const genPoints = (n, w, h) => {
+    const results = [];
+    for (let i = 0; i < n; i++) {
+        results.push([Math.random() * w, Math.random() * h]);
+    }
+    return results;
+}
+
+const points = genPoints(200, 500, 500);
+let pts = points.map(p => { return {x: p[0], y: p[1] }; });
+
+// pts.forEach(pt => {
+//     drawCircle(pt.x, pt.y, 10);
+// });
+
+const voronoi = new Voronoi();
+
+let diagram;
+// lloyd relaxation
+for (let i = 0; i < 5; i++) {
+    if (diagram) {
+        voronoi.recycle(diagram);
+    }
+    diagram = voronoi.compute(pts, {xl: 0, xr: 500, yt: 0, yb: 500 });
+    pts = diagram.cells.map(cell => {
+        const len = cell.halfedges.length;
+        const sumPt = cell.halfedges.map(he => {
+            return {
+                x: (he.edge.va.x + he.edge.vb.x) / 2,
+                y: (he.edge.va.y + he.edge.vb.y) / 2
+            };
+        }).reduce((acc, val) => {
+            return {
+                x: acc.x + val.x,
+                y: acc.y + val.y
+            };
+        }, {x: 0, y: 0});
+        return {
+            x: sumPt.x / len,
+            y: sumPt.y / len
+        };
+    });
+}
+
+// points.forEach(p => {
+//     let [x, y] = p;
+//     drawCircle(x, y, 20);
+// });
+
+const currentRoom = Math.random() * diagram.cells.length | 0;
+
+ctx.fillStyle = "rgba(255, 0, 0, 1)";
+
+diagram.cells
+    .map(cell => cell.halfedges)
+    .forEach((hes, i) => {
+        if (hes.length <= 2) {
+            return;
+        }
+        ctx.beginPath();
+        ctx.moveTo(hes[0].getEndpoint().x, hes[0].getEndpoint().y);
+        for (let i = 1; i < hes.length; i++) {
+            ctx.lineTo(hes[i].getEndpoint().x, hes[i].getEndpoint().y);
+        }
+        ctx.closePath();
+        if (i === currentRoom) {
+            ctx.fill();
+        }
+        ctx.stroke();
+    });
+
+console.log(diagram.cells[currentRoom]);
+
+// drawCircle(250, 250, 250);
+const SCALE_FACTOR = 1;
+
+const scene = new THREE.Scene();
+// const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+const camera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 1000);
+const loader = new THREE.TextureLoader();
+camera.position.y = 50;
+camera.position.z = 50;
+
+const above = new THREE.Vector3(0, 10, 0);
+camera.lookAt(above);
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(500, 500);
+document.body.appendChild(renderer.domElement);
+
+// const geometry = new THREE.BufferGeometry();
+// const vertices = Float32Array.from(diagram.cells[currentRoom].halfedges.map(he => {
+//     return [(he.getEndpoint().x - he.site.x) * SCALE_FACTOR, 0, (he.getEndpoint().y - he.site.y) * SCALE_FACTOR];
+// }).reduce((a, b) => a.concat(b), []));
+
+// geometry.addAttribute('position', new THREE.BufferAttribute(vertices, 3));
+const shape = new THREE.Shape();
+const hes = diagram.cells[currentRoom].halfedges;
+shape.moveTo(hes[0].getEndpoint().x - hes[0].site.x, hes[0].getEndpoint().y - hes[0].site.y);
+for (let i = 1; i < hes.length; i++) {
+    shape.lineTo(hes[i].getEndpoint().x - hes[i].site.x, hes[i].getEndpoint().y - hes[i].site.y);
+}
+const geometry = new THREE.ExtrudeGeometry(shape, { amount: 0, curveSegments: 0, steps: 0, bevelEnabled: false });
+
+const groundMat = new THREE.MeshBasicMaterial({ color: 0x5E0A3A, wireframe: false });
+const wallMat = new THREE.MeshBasicMaterial({ color: 0x783159 });
+
+// adjacent cells
+diagram.cells[currentRoom].halfedges
+    .map(he => [he.getStartpoint(), he.getEndpoint()])
+    .map(pts => {
+        const geometry = new THREE.BufferGeometry();
+        let wallpts = pts
+                .map(p => [p.x - diagram.cells[currentRoom].site.x, 0, p.y - diagram.cells[currentRoom].site.y])
+                .reduce((a, b) => a.concat(b), []);
+        wallpts.splice(3, 0,
+            wallpts[wallpts.length-6], 10, wallpts[wallpts.length-4],
+            wallpts[wallpts.length-3], 10, wallpts[wallpts.length-1]);
+        let vertices = Float32Array.from(wallpts);
+        geometry.addAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        const mesh = new THREE.Mesh(geometry, wallMat);
+        mesh.drawMode = THREE.TriangleFanDrawMode;
+        return mesh;
+    })
+    .forEach(mesh => {
+        scene.add(mesh);
+    });
+
+const mesh = new THREE.Mesh(geometry, groundMat);
+mesh.rotation.x = Math.PI / 2;
+scene.add(mesh);
+renderer.render(scene, camera);
+
+
+const gltfLoader = new THREE.GLTFLoader();
+let cube;
+gltfLoader.load('prot.gltf', obj => {
+    cube = obj.scene.children[0].children[0];
+    cube.rotation.x = -Math.PI / 2;
+    scene.add(obj.scene.children[0].children[0]);
+    renderer.render(scene, camera);
+});
+
+let t = 0;
+const tick = () => {
+    t += .01;
+    requestAnimationFrame(tick);
+    camera.position.z = Math.sin(t) * 50;
+    camera.position.x = Math.cos(t) * 50;
+    camera.lookAt(above);
+    renderer.render(scene, camera);
+};
+
+tick();
+let downPt = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+
+
+const touchSlop = 20;
+
+const onDown = (e) => {
+    // downPt.x = (e.clientX / renderer.domElement.width) * 2 - 1;
+    // downPt.y = - (e.clientY / renderer.domElement.height) * 2 + 2;
+    downPt.x = e.clientX;
+    downPt.y = e.clientY;
+};
+const onUp = (e) => {
+    if (Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) > touchSlop) {
+        return;
+    }
+    const rect = e.target.getBoundingClientRect();
+    downPt.x = ((e.clientX - rect.left) / renderer.domElement.width) * 2 - 1;
+    downPt.y = - ((e.clientY - rect.top) / renderer.domElement.height) * 2 + 1;
+    console.log(`${downPt.x},${downPt.y}`);
+    raycaster.setFromCamera(downPt, camera);
+    const hits = raycaster.intersectObject(mesh);
+    if (hits.length > 0) {
+        console.log(hits[0]);
+    }
+};
+
+renderer.domElement.addEventListener("mousedown", onDown);
+renderer.domElement.addEventListener("touchstart", onDown);
+renderer.domElement.addEventListener("mouseup", onUp);
+renderer.domElement.addEventListener("touchend", onUp);
+
+
+})();
+</script>
+</body>
+</html>
