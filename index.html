@@ -1,17 +1,21 @@
 <html>
 <head>
+    <meta name = "viewport" content = "user-scalable=no, width=device-width">
     <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>-->
-    <script src="three.min.js"></script>
+    <!--<script src="three.min.js"></script>-->
+    <script src="three.js"></script>
     <script src="GLTFLoader.js"></script>
     <script src="rhill-voronoi-core.min.js"></script>
 </head>
 <body>
-    <canvas id="c" width="500" height="500" style="float:left"></canvas>
-<script>
+    <canvas id="c" width="500" height="500" style="float:left;"></canvas>
+    <textarea id="t"></textarea>
+<script type="text/javascript">
 (() => {
 'use strict';
 
-const canvas = document.getElementById("c");
+const debug = document.getElementById('t');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 const drawCircle = (x, y, r) => {
@@ -32,10 +36,6 @@ const genPoints = (n, w, h) => {
 
 const points = genPoints(200, 500, 500);
 let pts = points.map(p => { return {x: p[0], y: p[1] }; });
-
-// pts.forEach(pt => {
-//     drawCircle(pt.x, pt.y, 10);
-// });
 
 const voronoi = new Voronoi();
 
@@ -71,7 +71,8 @@ for (let i = 0; i < 5; i++) {
 //     drawCircle(x, y, 20);
 // });
 
-const currentRoom = Math.random() * diagram.cells.length | 0;
+
+const currentRoom = Math.floor(Math.random() * diagram.cells.length);
 
 ctx.fillStyle = "rgba(255, 0, 0, 1)";
 
@@ -83,8 +84,8 @@ diagram.cells
         }
         ctx.beginPath();
         ctx.moveTo(hes[0].getEndpoint().x, hes[0].getEndpoint().y);
-        for (let i = 1; i < hes.length; i++) {
-            ctx.lineTo(hes[i].getEndpoint().x, hes[i].getEndpoint().y);
+        for (let j = 1; j < hes.length; j++) {
+            ctx.lineTo(hes[j].getEndpoint().x, hes[j].getEndpoint().y);
         }
         ctx.closePath();
         if (i === currentRoom) {
@@ -93,20 +94,22 @@ diagram.cells
         ctx.stroke();
     });
 
-console.log(diagram.cells[currentRoom]);
-
 // drawCircle(250, 250, 250);
 const SCALE_FACTOR = 1;
 
 const scene = new THREE.Scene();
-// const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-const camera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+// const camera = new THREE.OrthographicCamera(-35, 35, 35, -35, 0.1, 1000);
 const loader = new THREE.TextureLoader();
 camera.position.y = 50;
 camera.position.z = 50;
 
-const above = new THREE.Vector3(0, 10, 0);
-camera.lookAt(above);
+const ZERO = new THREE.Vector3(0, 0, 0);
+const UP = new THREE.Vector3(0, 1, 0);
+const SEA_LEVEL = new THREE.Plane(UP);
+
+const ABOVE = new THREE.Vector3(0, 10, 0);
+camera.lookAt(ABOVE);
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(500, 500);
@@ -127,10 +130,10 @@ for (let i = 1; i < hes.length; i++) {
 const geometry = new THREE.ExtrudeGeometry(shape, { amount: 0, curveSegments: 0, steps: 0, bevelEnabled: false });
 
 const groundMat = new THREE.MeshBasicMaterial({ color: 0x5E0A3A, wireframe: false });
-const wallMat = new THREE.MeshBasicMaterial({ color: 0x783159 });
+const wallMat = new THREE.MeshBasicMaterial({ color: 0x783159, wireframe: false });
 
 // adjacent cells
-diagram.cells[currentRoom].halfedges
+let walls = diagram.cells[currentRoom].halfedges
     .map(he => [he.getStartpoint(), he.getEndpoint()])
     .map(pts => {
         const geometry = new THREE.BufferGeometry();
@@ -138,17 +141,19 @@ diagram.cells[currentRoom].halfedges
                 .map(p => [p.x - diagram.cells[currentRoom].site.x, 0, p.y - diagram.cells[currentRoom].site.y])
                 .reduce((a, b) => a.concat(b), []);
         wallpts.splice(3, 0,
-            wallpts[wallpts.length-6], 10, wallpts[wallpts.length-4],
-            wallpts[wallpts.length-3], 10, wallpts[wallpts.length-1]);
+            wallpts[0], 10, wallpts[2],
+            wallpts[3], 10, wallpts[5],
+            wallpts[0], wallpts[1], wallpts[2],
+            wallpts[3], 10, wallpts[5]);
         let vertices = Float32Array.from(wallpts);
         geometry.addAttribute('position', new THREE.BufferAttribute(vertices, 3));
         const mesh = new THREE.Mesh(geometry, wallMat);
-        mesh.drawMode = THREE.TriangleFanDrawMode;
         return mesh;
-    })
-    .forEach(mesh => {
-        scene.add(mesh);
     });
+
+walls.forEach(mesh => {
+    scene.add(mesh);
+});
 
 const mesh = new THREE.Mesh(geometry, groundMat);
 mesh.rotation.x = Math.PI / 2;
@@ -157,57 +162,129 @@ renderer.render(scene, camera);
 
 
 const gltfLoader = new THREE.GLTFLoader();
-let cube;
+const player = new THREE.Group();
 gltfLoader.load('prot.gltf', obj => {
-    cube = obj.scene.children[0].children[0];
+    const cube = obj.scene.children[0].children[0];
     cube.rotation.x = -Math.PI / 2;
-    scene.add(obj.scene.children[0].children[0]);
+    player.add(obj.scene.children[0].children[0]);
+    scene.add(player);
+    renderer.render(scene, camera);
+});
+const playerTarget = new THREE.Vector3();
+
+const batteryGroup = new THREE.Group();
+gltfLoader.load('battery.gltf', obj => {
+    const batt = obj.scene.children[0].children[0];
+    batt.rotation.x = -Math.PI / 2;
+    batteryGroup.add(batt);
+    scene.add(batteryGroup);
     renderer.render(scene, camera);
 });
 
-let t = 0;
+// let t = 0;
+let overcomplicatedTickHandle;
 const tick = () => {
-    t += .01;
-    requestAnimationFrame(tick);
-    camera.position.z = Math.sin(t) * 50;
-    camera.position.x = Math.cos(t) * 50;
-    camera.lookAt(above);
+    // t += .01;
+    // camera.position.z = Math.sin(t) * 50;
+    // camera.position.x = Math.cos(t) * 50;
+    // camera.lookAt(ABOVE);
     renderer.render(scene, camera);
+    if (player.position.distanceTo(playerTarget) > 0.1) {
+        player.position.lerp(playerTarget, 0.25);
+        overcomplicatedTickHandle = requestAnimationFrame(tick);
+    }
 };
 
-tick();
+// tick();
 let downPt = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 
 
 const touchSlop = 20;
+let touchEndTime = 0;
+let prevMovePt;
+let isDown = false;
+
+const groundTouchPt = (evt, rect) => {
+  const x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+  const y = - ((evt.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera( {x: x, y: y}, camera);
+
+  return raycaster.ray.intersectPlane(SEA_LEVEL);
+};
 
 const onDown = (e) => {
+    isDown = true;
+    if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+    }
     // downPt.x = (e.clientX / renderer.domElement.width) * 2 - 1;
     // downPt.y = - (e.clientY / renderer.domElement.height) * 2 + 2;
     downPt.x = e.clientX;
     downPt.y = e.clientY;
+    const dp = groundTouchPt(e, e.target.getBoundingClientRect());
 };
 const onUp = (e) => {
+    if (e.clientX === undefined || e.clientY === undefined) {
+        return;
+    }
+    isDown = false;
+    prevMovePt = null;
     if (Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) > touchSlop) {
         return;
     }
     const rect = e.target.getBoundingClientRect();
-    downPt.x = ((e.clientX - rect.left) / renderer.domElement.width) * 2 - 1;
-    downPt.y = - ((e.clientY - rect.top) / renderer.domElement.height) * 2 + 1;
-    console.log(`${downPt.x},${downPt.y}`);
+    downPt.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    downPt.y = - ((e.clientY - rect.top) / rect.height) * 2 + 1;
+    debug.innerText = `${e.clientX}`;
     raycaster.setFromCamera(downPt, camera);
     const hits = raycaster.intersectObject(mesh);
     if (hits.length > 0) {
-        console.log(hits[0]);
+        const pt = hits[0].point;
+        player.lookAt(pt);
+        renderer.render(scene, camera);
+        playerTarget.set(pt.x, pt.y, pt.z);
+        cancelAnimationFrame(overcomplicatedTickHandle);
+        overcomplicatedTickHandle = requestAnimationFrame(tick);
+        return;
     }
+    const wallhits = raycaster.intersectObjects(walls);
+    console.log(wallhits);
+};
+
+const onMove = (e) => {
+    e.preventDefault();
+    if (!isDown) {
+        return;
+    }
+    if (Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) <= touchSlop) {
+        return;
+    }
+    const rect = e.target.getBoundingClientRect();
+
+    if (prevMovePt != null) {
+        const newPt = groundTouchPt(e, rect);
+        const oldAng = Math.atan2(prevMovePt.z, prevMovePt.x);
+        const newAng = Math.atan2(newPt.z, newPt.x);
+        const cang = Math.atan2(camera.position.z, camera.position.x) + (oldAng - newAng);
+        camera.position.set(Math.cos(cang) * 50, 50,  Math.sin(cang) * 50);
+        camera.lookAt(ABOVE);
+        renderer.render(scene, camera);
+    }
+    prevMovePt = groundTouchPt(e, rect);
 };
 
 renderer.domElement.addEventListener("mousedown", onDown);
-renderer.domElement.addEventListener("touchstart", onDown);
+renderer.domElement.addEventListener("touchstart", onDown, false);
 renderer.domElement.addEventListener("mouseup", onUp);
 renderer.domElement.addEventListener("touchend", onUp);
-
+renderer.domElement.addEventListener("touchmove", onMove, false);
+renderer.domElement.addEventListener("mousemove", onMove);
+renderer.domElement.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+}, true);
 
 })();
 </script>
