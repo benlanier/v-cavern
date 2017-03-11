@@ -72,7 +72,7 @@ for (let i = 0; i < 5; i++) {
 // });
 
 
-const currentRoom = Math.floor(Math.random() * diagram.cells.length);
+let currentRoom = Math.floor(Math.random() * diagram.cells.length);
 
 ctx.fillStyle = "rgba(255, 0, 0, 1)";
 
@@ -136,6 +136,8 @@ const makeFloor = (halfedges) => {
     const geometry = new THREE.ExtrudeGeometry(shape, { amount: 0, curveSegments: 0, steps: 0, bevelEnabled: false });
     const mesh = new THREE.Mesh(geometry, groundMat);
     mesh.rotation.x = Math.PI / 2;
+    mesh.name = 'floor';
+    mesh['siteref'] = halfedges[0].site;
     return mesh;
 };
 
@@ -163,6 +165,7 @@ halfedges.map(he => {
     geometry.addAttribute('position', new THREE.BufferAttribute(vertices, 3));
     const mesh = new THREE.Mesh(geometry, he.edge.rSite === null ? endOfTheWorldMat : wallMat);
     mesh['heref'] = he;
+    mesh.name = 'wall';
     return mesh;
 });
 
@@ -259,50 +262,74 @@ const onUp = (e) => {
     downPt.y = - ((e.clientY - rect.top) / rect.height) * 2 + 1;
     debug.innerText = `${e.clientX}`;
     raycaster.setFromCamera(downPt, camera);
-    const hits = raycaster.intersectObject(ground);
+    const hits = raycaster.intersectObjects(scene.children);
     if (hits.length > 0) {
+        const obj = hits[0].object;
         const pt = hits[0].point;
-        player.lookAt(pt);
-        renderer.render(scene, camera);
-        playerTarget.set(pt.x, pt.y, pt.z);
-        cancelAnimationFrame(overcomplicatedTickHandle);
-        overcomplicatedTickHandle = requestAnimationFrame(tick);
-        return;
-    }
-    const wallhits = raycaster.intersectObjects(walls);
-    if (wallhits.length > 0) {
-        const he = wallhits[0].object.heref;
-        const pt = wallhits[0].point;
-        pt.y = 0;
-        player.lookAt(pt);
-        renderer.render(scene, camera);
-        playerTarget.set(pt.x, pt.y, pt.z);
-        cancelAnimationFrame(overcomplicatedTickHandle);
-        overcomplicatedTickHandle = requestAnimationFrame(tick);
-        if (he.edge.rSite === null) {
-            return;
-        }
-        scene.remove(wallhits[0].object);
-        console.log(he.edge.lSite);
-        
-        const us = he.site;
-        // there is some kind of bug in this voronoi lib where not all lSites refer to the same site
-        const them = he.edge.rSite.voronoiId != us.voronoiId ? he.edge.rSite : he.edge.lSite;
-        const newFloor = makeFloor(diagram.cells[them.voronoiId].halfedges);
-        const newWalls = makeWalls(diagram.cells[them.voronoiId].halfedges)
-            .filter(w => {
-                const other = w.heref.site.voronoiId === w.heref.edge.lSite.voronoiId ? w.heref.edge.rSite :
-                    w.heref.edge.lSite;
-                return other.voronoiId != us.voronoiId;
+        if (obj.name === 'floor') {
+            player.lookAt(pt);
+            const dx = -(obj.siteref.x - diagram.cells[currentRoom].site.x);
+            const dz = -(obj.siteref.y - diagram.cells[currentRoom].site.y);
+            scene.children.forEach(c => {
+                c.position.x += dx;
+                c.position.z += dz;
             });
-            // .filter(w => (w.heref.edge.rSite !== null && w.heref.edge.rSite.voronoiId != them.voronoiId) &&
-            //              (w.heref.edge.lSite !== null && w.heref.edge.lSite.voronoiId != them.voronoiId));
-        // newWalls.forEach(w => w.position.set(them.x - us.x, 0, them.y - us.y));
-        // newWalls.forEach(w => w.rotation.x = -Math.PI / 2);
-        newFloor.position.set(them.x - us.x, 0, them.y - us.y);
-        // newFloor.position.y = 10;
-        scene.add(newFloor);
-        newWalls.forEach(n => scene.add(n));
+            playerTarget.set(pt.x + dx, 0, pt.z + dz);
+            cancelAnimationFrame(overcomplicatedTickHandle);
+            overcomplicatedTickHandle = requestAnimationFrame(tick);
+            console.log(`room was ${currentRoom}`);
+            currentRoom = obj.siteref.voronoiId;
+            console.log(`room is now ${currentRoom}`);
+        } else if (obj.name === 'wall') {
+            const he = obj.heref;
+            pt.y = 0;
+            player.lookAt(pt);
+            playerTarget.set(pt.x, pt.y, pt.z);
+            cancelAnimationFrame(overcomplicatedTickHandle);
+            overcomplicatedTickHandle = requestAnimationFrame(tick);
+            if (he.edge.rSite === null) {
+                return;
+            }
+            scene.remove(obj);
+            console.log(he.edge.lSite);
+            
+            const us = he.site;
+            // there is some kind of bug in this voronoi lib where not all lSites refer to the same site
+            const them = he.edge.rSite.voronoiId != us.voronoiId ? he.edge.rSite : he.edge.lSite;
+
+            const dx = -(them.x - us.x);
+            const dz = -(them.y - us.y);
+            playerTarget.x += dx;
+            playerTarget.z += dz;
+
+            currentRoom = them.voronoiId;
+            const newFloor = makeFloor(diagram.cells[them.voronoiId].halfedges);
+            const newWalls = makeWalls(diagram.cells[them.voronoiId].halfedges)
+                .filter(w => {
+                    const other = w.heref.site.voronoiId === w.heref.edge.lSite.voronoiId ? w.heref.edge.rSite :
+                        w.heref.edge.lSite;
+                    if (other == null) {
+                        return true;
+                    }
+                    return other.voronoiId != us.voronoiId;
+                });
+                // .filter(w => (w.heref.edge.rSite !== null && w.heref.edge.rSite.voronoiId != them.voronoiId) &&
+                //              (w.heref.edge.lSite !== null && w.heref.edge.lSite.voronoiId != them.voronoiId));
+            newWalls.forEach(w => w.position.set(them.x - us.x, 0, them.y - us.y));
+            // newWalls.forEach(w => w.rotation.x = -Math.PI / 2);
+            newFloor.position.set(them.x - us.x, 0, them.y - us.y);
+            // newFloor.position.y = 10;
+            scene.add(newFloor);
+            newWalls.forEach(n => scene.add(n));
+
+            
+            console.log(`${dx}, ${dz}`);
+            scene.children.forEach(c => {
+                c.position.x += dx;
+                c.position.z += dz;
+            });
+        }
+        renderer.render(scene, camera);
     }
 };
 
