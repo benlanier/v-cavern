@@ -1,22 +1,27 @@
 <html>
 <head>
-    <meta name = "viewport" content = "user-scalable=no, width=device-width">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, minimal-ui" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>-->
+    <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.pep/0.4.0/jquery.pep.min.js"></script>-->
     <!--<script src="three.min.js"></script>-->
     <script src="three.js"></script>
+    <script src="pep.js"></script>
     <script src="GLTFLoader.js"></script>
     <script src="rhill-voronoi-core.min.js"></script>
 </head>
 <body>
-    <canvas id="c" width="500" height="500" style="float:left;"></canvas>
-    <textarea id="t"></textarea>
+    <!--<canvas id="c" width="500" height="500" style="float:left;"></canvas>
+    <textarea id="t"></textarea>-->
 <script type="text/javascript">
 (() => {
 'use strict';
 
-const debug = document.getElementById('t');
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
+// const debug = document.getElementById('t');
+// const canvas = document.getElementById('c');
+// const ctx = canvas.getContext('2d');
 
 const drawCircle = (x, y, r) => {
     ctx.beginPath();
@@ -74,32 +79,32 @@ for (let i = 0; i < 5; i++) {
 
 let currentRoom = Math.floor(Math.random() * diagram.cells.length);
 
-ctx.fillStyle = "rgba(255, 0, 0, 1)";
+// ctx.fillStyle = "rgba(255, 0, 0, 1)";
 
-diagram.cells
-    .map(cell => cell.halfedges)
-    .forEach((hes, i) => {
-        if (hes.length <= 2) {
-            return;
-        }
-        ctx.beginPath();
-        ctx.moveTo(hes[0].getEndpoint().x, hes[0].getEndpoint().y);
-        for (let j = 1; j < hes.length; j++) {
-            ctx.lineTo(hes[j].getEndpoint().x, hes[j].getEndpoint().y);
-        }
-        ctx.closePath();
-        if (i === currentRoom) {
-            ctx.fill();
-        }
-        ctx.stroke();
-    });
+// diagram.cells
+//     .map(cell => cell.halfedges)
+//     .forEach((hes, i) => {
+//         if (hes.length <= 2) {
+//             return;
+//         }
+//         ctx.beginPath();
+//         ctx.moveTo(hes[0].getEndpoint().x, hes[0].getEndpoint().y);
+//         for (let j = 1; j < hes.length; j++) {
+//             ctx.lineTo(hes[j].getEndpoint().x, hes[j].getEndpoint().y);
+//         }
+//         ctx.closePath();
+//         if (i === currentRoom) {
+//             ctx.fill();
+//         }
+//         ctx.stroke();
+//     });
 
 // drawCircle(250, 250, 250);
 const SCALE_FACTOR = 1;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 1000);
-// const camera = new THREE.OrthographicCamera(-35, 35, 35, -35, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+
 const loader = new THREE.TextureLoader();
 camera.position.y = 50;
 camera.position.z = 50;
@@ -112,19 +117,16 @@ const ABOVE = new THREE.Vector3(0, 10, 0);
 camera.lookAt(ABOVE);
 
 const renderer = new THREE.WebGLRenderer();
-renderer.setSize(500, 500);
+renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+renderer.domElement.style.position = 'absolute';
+renderer.domElement.style.top = '0';
+renderer.domElement.style.left = '0';
 
 const groundMat = new THREE.MeshBasicMaterial({ color: 0x5E0A3A, wireframe: false });
 const wallMat = new THREE.MeshBasicMaterial({ color: 0x783159, wireframe: false });
 const endOfTheWorldMat = new THREE.MeshBasicMaterial({ color: 0x313131, wireframe: false });
 
-// const geometry = new THREE.BufferGeometry();
-// const vertices = Float32Array.from(diagram.cells[currentRoom].halfedges.map(he => {
-//     return [(he.getEndpoint().x - he.site.x) * SCALE_FACTOR, 0, (he.getEndpoint().y - he.site.y) * SCALE_FACTOR];
-// }).reduce((a, b) => a.concat(b), []));
-
-// geometry.addAttribute('position', new THREE.BufferAttribute(vertices, 3));
 const makeFloor = (halfedges) => {
     const shape = new THREE.Shape();
     shape.moveTo(halfedges[0].getEndpoint().x - halfedges[0].site.x,
@@ -178,9 +180,6 @@ walls.forEach(mesh => {
 let ground = makeFloor(diagram.cells[currentRoom].halfedges);
 scene.add(ground);
 
-// const mesh = new THREE.Mesh(geometry, groundMat);
-// mesh.rotation.x = Math.PI / 2;
-// scene.add(mesh);
 renderer.render(scene, camera);
 
 
@@ -204,13 +203,8 @@ gltfLoader.load('battery.gltf', obj => {
     renderer.render(scene, camera);
 });
 
-// let t = 0;
 let overcomplicatedTickHandle;
 const tick = () => {
-    // t += .01;
-    // camera.position.z = Math.sin(t) * 50;
-    // camera.position.x = Math.cos(t) * 50;
-    // camera.lookAt(ABOVE);
     renderer.render(scene, camera);
     if (player.position.distanceTo(playerTarget) > 0.1) {
         player.position.lerp(playerTarget, 0.25);
@@ -228,6 +222,9 @@ let touchEndTime = 0;
 let prevMovePt;
 let isDown = false;
 
+const visitedRooms = new Set();
+visitedRooms.add(currentRoom);
+
 const groundTouchPt = (evt, rect) => {
   const x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
   const y = - ((evt.clientY - rect.top) / rect.height) * 2 + 1;
@@ -242,8 +239,6 @@ const onDown = (e) => {
     if (e.touches && e.touches.length > 1) {
         e.preventDefault();
     }
-    // downPt.x = (e.clientX / renderer.domElement.width) * 2 - 1;
-    // downPt.y = - (e.clientY / renderer.domElement.height) * 2 + 2;
     downPt.x = e.clientX;
     downPt.y = e.clientY;
     const dp = groundTouchPt(e, e.target.getBoundingClientRect());
@@ -260,7 +255,7 @@ const onUp = (e) => {
     const rect = e.target.getBoundingClientRect();
     downPt.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     downPt.y = - ((e.clientY - rect.top) / rect.height) * 2 + 1;
-    debug.innerText = `${e.clientX}`;
+    // debug.innerText = `${e.clientX}`;
     raycaster.setFromCamera(downPt, camera);
     const hits = raycaster.intersectObjects(scene.children);
     if (hits.length > 0) {
@@ -292,7 +287,7 @@ const onUp = (e) => {
             }
             scene.remove(obj);
             console.log(he.edge.lSite);
-            
+
             const us = he.site;
             // there is some kind of bug in this voronoi lib where not all lSites refer to the same site
             const them = he.edge.rSite.voronoiId != us.voronoiId ? he.edge.rSite : he.edge.lSite;
@@ -303,27 +298,27 @@ const onUp = (e) => {
             playerTarget.z += dz;
 
             currentRoom = them.voronoiId;
-            const newFloor = makeFloor(diagram.cells[them.voronoiId].halfedges);
-            const newWalls = makeWalls(diagram.cells[them.voronoiId].halfedges)
-                .filter(w => {
-                    const other = w.heref.site.voronoiId === w.heref.edge.lSite.voronoiId ? w.heref.edge.rSite :
-                        w.heref.edge.lSite;
-                    if (other == null) {
-                        return true;
-                    }
-                    return other.voronoiId != us.voronoiId;
-                });
-                // .filter(w => (w.heref.edge.rSite !== null && w.heref.edge.rSite.voronoiId != them.voronoiId) &&
-                //              (w.heref.edge.lSite !== null && w.heref.edge.lSite.voronoiId != them.voronoiId));
-            newWalls.forEach(w => w.position.set(them.x - us.x, 0, them.y - us.y));
-            // newWalls.forEach(w => w.rotation.x = -Math.PI / 2);
-            newFloor.position.set(them.x - us.x, 0, them.y - us.y);
-            // newFloor.position.y = 10;
-            scene.add(newFloor);
-            newWalls.forEach(n => scene.add(n));
 
-            
-            console.log(`${dx}, ${dz}`);
+            if (!visitedRooms.has(currentRoom)) {
+                const newFloor = makeFloor(diagram.cells[them.voronoiId].halfedges);
+                newFloor.position.set(them.x - us.x, 0, them.y - us.y);
+                scene.add(newFloor);
+
+                const newWalls = makeWalls(diagram.cells[them.voronoiId].halfedges)
+                    .filter(w => {
+                        const other = w.heref.site.voronoiId === w.heref.edge.lSite.voronoiId ? w.heref.edge.rSite :
+                            w.heref.edge.lSite;
+                        if (other == null) {
+                            return true;
+                        }
+                        return other.voronoiId != us.voronoiId && !visitedRooms.has(other.voronoiId);
+                    });
+                newWalls.forEach(w => w.position.set(them.x - us.x, 0, them.y - us.y));
+                
+                newWalls.forEach(n => scene.add(n));
+                visitedRooms.add(currentRoom);
+            }
+
             scene.children.forEach(c => {
                 c.position.x += dx;
                 c.position.z += dz;
@@ -355,17 +350,21 @@ const onMove = (e) => {
     prevMovePt = groundTouchPt(e, rect);
 };
 
-renderer.domElement.addEventListener("mousedown", onDown);
-renderer.domElement.addEventListener("touchstart", onDown, false);
-renderer.domElement.addEventListener("mouseup", onUp);
-renderer.domElement.addEventListener("mouseout", onUp);
-renderer.domElement.addEventListener("touchend", onUp);
-renderer.domElement.addEventListener("touchmove", onMove, false);
-renderer.domElement.addEventListener("mousemove", onMove);
-renderer.domElement.addEventListener('click', e => {
+renderer.domElement.addEventListener('pointerdown', onDown);
+
+renderer.domElement.addEventListener('pointermove', onMove);
+
+renderer.domElement.addEventListener('pointerup', onUp);
+
+document.addEventListener('gesturestart', (e) => {
     e.preventDefault();
-    e.stopImmediatePropagation();
-}, true);
+});
+
+document.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+});
+
+renderer.domElement.setAttribute("touch-action", "none");
 
 })();
 </script>
